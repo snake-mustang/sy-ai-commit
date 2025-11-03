@@ -1,0 +1,56 @@
+[
+    // ================================================
+    // AI Auto Commit Assistant - 一键提交配置
+    // ================================================
+    // 快捷键：ctrl+g ctrl+g
+    // 功能：自动执行完整的提交流程
+    //
+    // 命令说明：
+    // 1. workbench.action.files.save       - 保存所有文件
+    // 2. git.stageAll                      - 暂存所有更改 (git add .)
+    // 3. cursor.generateGitCommitMessage   - 使用 AI 生成提交信息
+    // 4. git.commit                        - 提交更改 (git commit)
+    // 5. git.push                          - [未启用] 推送到远程
+    //
+    // 💡 推荐：适合确定更改无误，希望快速提交的场景
+    // ================================================
+    {
+        "key": "ctrl+g ctrl+g",
+        "command": "runCommands",
+        "args": {
+            "commands": [
+                "workbench.action.files.save",
+                "git.stageAll",
+                "cursor.generateGitCommitMessage",
+                "git.commit"
+            ]
+        }
+    },
+
+    // ================================================
+    // AI Auto Commit Assistant - 仅生成提交信息
+    // ================================================
+    // 快捷键：ctrl+t ctrl+t
+    // 功能：生成 AI 提交信息，但不自动提交
+    //
+    // 命令说明：
+    // 1. workbench.action.files.save       - 保存所有文件
+    // 2. git.stageAll                      - 暂存所有更改 (git add .)
+    // 3. cursor.generateGitCommitMessage   - 使用 AI 生成提交信息
+    //
+    // 💡 推荐：生成后可在源代码管理面板查看和修改提交信息
+    // 💡 推荐：确认无误后，点击"提交"按钮或按 Ctrl+Enter 完成提交
+    // ================================================
+    {
+        "key": "ctrl+t ctrl+t",
+        "command": "runCommands",
+        "args": {
+            "commands": [
+                "workbench.action.files.save",
+                "git.stageAll",
+                "cursor.generateGitCommitMessage"
+            ]
+        }
+    }
+]
+

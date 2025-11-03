@@ -1,0 +1,84 @@
+{
+  "name": "sy-ai-commit",
+  "displayName": "sy-ai-commit",
+  "description": "一键自动配置 Git Commit 快捷键和 Cursor 规则，提升提交效率，使用 AI 生成提交信息",
+  "version": "1.0.9",
+  "publisher": "sy-ai-commit",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Other",
+    "SCM Providers"
+  ],
+  "keywords": [
+    "git",
+    "commit",
+    "cursor",
+    "ai",
+    "auto commit"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "auto-commit-assistant.setup",
+        "title": "AI Auto Commit: 初始化配置"
+      }
+    ],
+    "configuration": {
+      "title": "AI Auto Commit Assistant",
+      "properties": {
+        "autoCommitAssistant.autoSetupOnStartup": {
+          "type": "boolean",
+          "default": true,
+          "description": "在工作区首次打开时自动配置"
+        },
+        "autoCommitAssistant.keybinding": {
+          "type": "string",
+          "default": "ctrl+g ctrl+g",
+          "description": "一键提交快捷键（保存→暂存→生成信息→提交）"
+        },
+        "autoCommitAssistant.generateOnlyKeybinding": {
+          "type": "string",
+          "default": "ctrl+t ctrl+t",
+          "description": "仅生成提交信息快捷键（保存→暂存→生成信息）"
+        },
+        "autoCommitAssistant.enablePush": {
+          "type": "boolean",
+          "default": false,
+          "description": "是否在提交后自动推送"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src --ext ts",
+    "test": "node ./out/test/runTest.js",
+    "package": "vsce package",
+    "publish": "vsce publish"
+  },
+  "devDependencies": {
+    "@types/node": "^18.0.0",
+    "@types/vscode": "^1.80.0",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "@vscode/test-electron": "^2.3.0",
+    "@vscode/vsce": "^2.19.0",
+    "eslint": "^8.45.0",
+    "typescript": "^5.1.6"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-username/auto-commit-assistant.git"
+  },
+  "license": "MIT",
+  "icon": "icon.png"
+}

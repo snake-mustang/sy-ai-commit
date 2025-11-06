@@ -18,53 +18,23 @@ export function activate(context: vscode.ExtensionContext) {
         }
     );
 
-    // 注册命令：显示生成完成提示（用于 Ctrl+T Ctrl+T）
-    const showGenerateCompleteHintCommand = vscode.commands.registerCommand(
-        'auto-commit-assistant.showGenerateCompleteHint',
+    // 注册命令：一键提交（Ctrl+G Ctrl+G）
+    const commitWithGenerateCommand = vscode.commands.registerCommand(
+        'auto-commit-assistant.commitWithGenerate',
         async () => {
-            const selection = await vscode.window.showInformationMessage(
-                '✅ 已生成提交信息！\n\n' +
-                '📝 提交信息已填入源代码管理面板\n' +
-                '👉 下一步：查看提交信息并点击"提交"按钮（或按 Ctrl+Enter）',
-                { modal: true },  // 使用模态对话框，更明显
-                '打开源代码管理',
-                '知道了'
-            );
-            
-            if (selection === '打开源代码管理') {
-                vscode.commands.executeCommand('workbench.view.scm');
-            }
+            await executeCommitWithGenerate();
         }
     );
 
-    // 注册命令：显示提交完成提示（用于 Ctrl+G Ctrl+G）
-    const showCommitCompleteHintCommand = vscode.commands.registerCommand(
-        'auto-commit-assistant.showCommitCompleteHint',
+    // 注册命令：仅生成提交信息（Ctrl+T Ctrl+T）
+    const generateOnlyCommand = vscode.commands.registerCommand(
+        'auto-commit-assistant.generateOnly',
         async () => {
-            const config = vscode.workspace.getConfiguration('autoCommitAssistant');
-            const enablePush = config.get<boolean>('enablePush', false);
-            
-            if (enablePush) {
-                await vscode.window.showInformationMessage(
-                    '✅ 已自动提交并推送！\n\n' +
-                    '🎉 提交已完成并推送到远程仓库',
-                    { modal: true },  // 使用模态对话框，更明显
-                    '知道了'
-                );
-            } else {
-                await vscode.window.showInformationMessage(
-                    '✅ 已自动提交成功！\n\n' +
-                    '💡 提交已完成，未推送到远程\n' +
-                    '👉 下一步：请在源代码管理中手动点击"推送"按钮',
-                    { modal: true },  // 使用模态对话框，更明显
-                    '知道了',
-                    '取消'
-                );
-            }
+            await executeGenerateOnly();
         }
     );
 
-    context.subscriptions.push(setupCommand, showGenerateCompleteHintCommand, showCommitCompleteHintCommand);
+    context.subscriptions.push(setupCommand, commitWithGenerateCommand, generateOnlyCommand);
 
     // 首次打开时自动配置
     checkAndAutoSetup(context);
@@ -126,7 +96,7 @@ async function setupAll() {
             
             // 延迟一下让用户看到完成消息
             await new Promise(resolve => setTimeout(resolve, 500));
-        }
+        } 
     );
     
     // 显示初始化成功提示，包含快捷键说明（带按钮的弹窗）
@@ -193,52 +163,26 @@ async function setupKeybindings() {
             }
         }
 
-        // 构建完整提交命令列表（ctrl+g ctrl+g）
-        const fullCommands = [
-            'workbench.action.files.save',
-            'git.stageAll',
-            'cursor.generateGitCommitMessage',
-            'git.commit',
-            'auto-commit-assistant.showCommitCompleteHint'  // 添加提交完成提示
-        ];
-
-        if (enablePush) {
-            // 如果启用了自动推送，在 commit 后、提示前添加 push
-            fullCommands.splice(4, 0, 'git.push');
-        }
-
-        // 构建仅生成信息命令列表（ctrl+t ctrl+t）
-        const generateOnlyCommands = [
-            'workbench.action.files.save',
-            'git.stageAll',
-            'cursor.generateGitCommitMessage',
-            'auto-commit-assistant.showGenerateCompleteHint'  // 添加生成完成提示
-        ];
-
         // 移除可能存在的旧配置
         keybindings = keybindings.filter(
             (kb: any) => !(
                 (kb.key === keybinding || kb.key === generateOnlyKeybinding) && 
-                kb.command === 'runCommands'
+                (kb.command === 'runCommands' || 
+                 kb.command === 'auto-commit-assistant.commitWithGenerate' || 
+                 kb.command === 'auto-commit-assistant.generateOnly')
             )
         );
 
         // 添加完整提交配置
         keybindings.push({
             key: keybinding,
-            command: 'runCommands',
-            args: {
-                commands: fullCommands
-            }
+            command: 'auto-commit-assistant.commitWithGenerate'
         });
 
         // 添加仅生成信息配置
         keybindings.push({
             key: generateOnlyKeybinding,
-            command: 'runCommands',
-            args: {
-                commands: generateOnlyCommands
-            }
+            command: 'auto-commit-assistant.generateOnly'
         });
 
         // 写入文件（带注释）
@@ -275,46 +219,42 @@ function generateKeybindingsContent(keybindings: any[], commitKey: string, gener
         const isLast = i === keybindings.length - 1;
         
         // 如果是完整提交配置，添加详细注释
-        if (kb.key === commitKey && kb.command === 'runCommands') {
+        if (kb.key === commitKey && kb.command === 'auto-commit-assistant.commitWithGenerate') {
             lines.push('    // ================================================');
             lines.push('    // AI Auto Commit Assistant - 一键提交配置');
             lines.push('    // ================================================');
             lines.push('    // 快捷键：' + kb.key);
             lines.push('    // 功能：自动执行完整的提交流程');
             lines.push('    //');
-            lines.push('    // 命令说明：');
-            lines.push('    // 1. workbench.action.files.save                      - 保存所有文件');
-            lines.push('    // 2. git.stageAll                                     - 暂存所有更改 (git add .)');
-            lines.push('    // 3. cursor.generateGitCommitMessage                  - 使用 AI 生成提交信息');
-            lines.push('    // 4. git.commit                                       - 提交更改 (git commit)');
+            lines.push('    // 执行步骤：');
+            lines.push('    // 1. 保存所有文件');
+            lines.push('    // 2. 暂存所有更改 (git add .)');
+            lines.push('    // 3. 使用 AI 生成提交信息');
+            lines.push('    // 4. 自动提交 (git commit)');
             if (enablePush) {
-                lines.push('    // 5. git.push                                         - 推送到远程 (git push)');
-                lines.push('    // 6. auto-commit-assistant.showCommitCompleteHint     - 显示完成提示');
-            } else {
-                lines.push('    // 5. auto-commit-assistant.showCommitCompleteHint     - 显示完成提示');
+                lines.push('    // 5. 推送到远程 (git push)');
             }
             lines.push('    //');
-            lines.push('    // ✅ 执行完成后会弹窗提示，并提供下一步操作引导');
+            lines.push('    // ✅ 执行完成后会显示模态弹窗提示');
             lines.push('    // 💡 推荐：适合确定更改无误，希望快速提交的场景');
             lines.push('    // ================================================');
         }
         // 如果是仅生成信息配置，添加详细注释
-        else if (kb.key === generateOnlyKey && kb.command === 'runCommands') {
+        else if (kb.key === generateOnlyKey && kb.command === 'auto-commit-assistant.generateOnly') {
             lines.push('    // ================================================');
             lines.push('    // AI Auto Commit Assistant - 仅生成提交信息');
             lines.push('    // ================================================');
             lines.push('    // 快捷键：' + kb.key);
             lines.push('    // 功能：生成 AI 提交信息，但不自动提交');
             lines.push('    //');
-            lines.push('    // 命令说明：');
-            lines.push('    // 1. workbench.action.files.save                        - 保存所有文件');
-            lines.push('    // 2. git.stageAll                                       - 暂存所有更改 (git add .)');
-            lines.push('    // 3. cursor.generateGitCommitMessage                    - 使用 AI 生成提交信息');
-            lines.push('    // 4. auto-commit-assistant.showGenerateCompleteHint     - 显示生成完成提示');
+            lines.push('    // 执行步骤：');
+            lines.push('    // 1. 保存所有文件');
+            lines.push('    // 2. 暂存所有更改 (git add .)');
+            lines.push('    // 3. 使用 AI 生成提交信息');
             lines.push('    //');
-            lines.push('    // ✅ 执行完成后会弹窗提示，并引导到源代码管理面板');
+            lines.push('    // ✅ 执行完成后会显示模态弹窗提示，并可打开源代码管理面板');
             lines.push('    // 💡 推荐：生成后可在源代码管理面板查看和修改提交信息');
-            lines.push('    // 💡 推荐：确认无误后，点击"提交"按钮或按 Ctrl+Enter 完成提交');
+            lines.push('    // 💡 确认无误后，点击"提交"按钮或按 Ctrl+Enter 完成提交');
             lines.push('    // ================================================');
         }
         
@@ -477,6 +417,120 @@ H5 客户端变更：
     } catch (error) {
         vscode.window.showErrorMessage(`❌ 配置 Cursor 规则失败：${error}`);
     }
+}
+
+/**
+ * 执行一键提交流程（Ctrl+G Ctrl+G）
+ */
+async function executeCommitWithGenerate() {
+    try {
+        const config = vscode.workspace.getConfiguration('autoCommitAssistant');
+        const enablePush = config.get<boolean>('enablePush', false);
+
+        await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: "AI Auto Commit",
+            cancellable: false
+        }, async (progress) => {
+            // 1. 保存所有文件
+            progress.report({ increment: 0, message: "保存文件..." });
+            await vscode.commands.executeCommand('workbench.action.files.saveAll');
+            await delay(300);
+
+            // 2. 暂存所有更改
+            progress.report({ increment: 25, message: "暂存更改..." });
+            await vscode.commands.executeCommand('git.stageAll');
+            await delay(500);
+
+            // 3. 生成提交信息
+            progress.report({ increment: 25, message: "AI 生成提交信息..." });
+            await vscode.commands.executeCommand('cursor.generateGitCommitMessage');
+            await delay(2000); // 等待 AI 生成完成
+
+            // 4. 提交
+            progress.report({ increment: 25, message: "提交更改..." });
+            await vscode.commands.executeCommand('git.commit');
+            await delay(500);
+
+            // 5. 推送（如果启用）
+            if (enablePush) {
+                progress.report({ increment: 25, message: "推送到远程..." });
+                await vscode.commands.executeCommand('git.push');
+            }
+        });
+
+        // 显示完成提示
+        if (enablePush) {
+            await vscode.window.showInformationMessage(
+                '✅ 已自动提交并推送！\n\n' +
+                '🎉 提交已完成并推送到远程仓库',
+                { modal: true },
+                '知道了'
+            );
+        } else {
+            await vscode.window.showInformationMessage(
+                '✅ 已自动提交成功！\n\n' +
+                '💡 提交已完成，未推送到远程\n' +
+                '👉 下一步：请在源代码管理中手动点击"推送"按钮',
+                { modal: true },
+                '知道了',
+                '取消'
+            );
+        }
+    } catch (error) {
+        vscode.window.showErrorMessage(`❌ 提交失败：${error}`);
+    }
+}
+
+/**
+ * 执行仅生成提交信息流程（Ctrl+T Ctrl+T）
+ */
+async function executeGenerateOnly() {
+    try {
+        await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: "AI Auto Commit",
+            cancellable: false
+        }, async (progress) => {
+            // 1. 保存所有文件
+            progress.report({ increment: 0, message: "保存文件..." });
+            await vscode.commands.executeCommand('workbench.action.files.saveAll');
+            await delay(300);
+
+            // 2. 暂存所有更改
+            progress.report({ increment: 33, message: "暂存更改..." });
+            await vscode.commands.executeCommand('git.stageAll');
+            await delay(500);
+
+            // 3. 生成提交信息
+            progress.report({ increment: 34, message: "AI 生成提交信息..." });
+            await vscode.commands.executeCommand('cursor.generateGitCommitMessage');
+            await delay(2000); // 等待 AI 生成完成
+        });
+
+        // 显示完成提示
+        const selection = await vscode.window.showInformationMessage(
+            '✅ 已生成提交信息！\n\n' +
+            '📝 提交信息已填入源代码管理面板\n' +
+            '👉 下一步：查看提交信息并点击"提交"按钮（或按 Ctrl+Enter）',
+            { modal: true },
+            '打开源代码管理',
+            '知道了'
+        );
+
+        if (selection === '打开源代码管理') {
+            await vscode.commands.executeCommand('workbench.view.scm');
+        }
+    } catch (error) {
+        vscode.window.showErrorMessage(`❌ 生成提交信息失败：${error}`);
+    }
+}
+
+/**
+ * 延迟函数
+ */
+function delay(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 /**

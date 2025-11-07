@@ -8,6 +8,16 @@
 
 ---
 
+## 🌟 GitHub 仓库
+
+**GitHub 地址：** [https://github.com/snake-mustang/sy-ai-commit](https://github.com/snake-mustang/sy-ai-commit)
+
+⭐️ **请不要吝啬你的 STAR，点点 STAR，这对我很重要！**
+
+如果这个插件对您有帮助，请到 [GitHub](https://github.com/snake-mustang/sy-ai-commit) 给个 Star ⭐️，这是对我最大的鼓励和支持！
+
+---
+
 ## 📖 使用教程（快速上手）
 
 ### ⚠️ 重要提示
@@ -291,7 +301,7 @@ Ctrl+Shift+P → sy commit: 初始化配置
 
 ## 🐛 问题反馈
 
-- 💬 [GitHub Issues](https://github.com/your-username/sy-ai-commit/issues)
+- 💬 [GitHub Issues](https://github.com/snake-mustang/sy-ai-commit/issues)
 
 ---
 

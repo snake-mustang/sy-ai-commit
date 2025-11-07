@@ -2,7 +2,7 @@
   "name": "sy-ai-commit",
   "displayName": "sy-ai-commit",
   "description": "一键自动配置 Git Commit 快捷键和 Cursor 规则，提升提交效率，使用 AI 生成提交信息",
-  "version": "1.1.4",
+  "version": "1.1.8",
   "publisher": "sy-ai-commit",
   "engines": {
     "vscode": "^1.80.0"
@@ -35,6 +35,10 @@
       {
         "command": "auto-commit-assistant.generateOnly",
         "title": "sy commit: 仅生成提交信息"
+      },
+      {
+        "command": "auto-commit-assistant.testProgress",
+        "title": "sy commit: 测试进度显示（仅用于调试）"
       }
     ],
     "configuration": {
@@ -54,6 +58,11 @@
           "type": "string",
           "default": "ctrl+t ctrl+t",
           "description": "仅生成提交信息快捷键（保存→暂存→生成信息）"
+        },
+        "autoCommitAssistant.testProgressKeybinding": {
+          "type": "string",
+          "default": "ctrl+h ctrl+h",
+          "description": "测试进度显示快捷键（仅用于调试，不执行实际 git 操作）"
         },
         "autoCommitAssistant.enablePush": {
           "type": "boolean",

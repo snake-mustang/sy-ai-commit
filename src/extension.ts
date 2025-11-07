@@ -34,7 +34,15 @@ export function activate(context: vscode.ExtensionContext) {
         }
     );
 
-    context.subscriptions.push(setupCommand, commitWithGenerateCommand, generateOnlyCommand);
+    // 注册命令：测试进度显示（Ctrl+R Ctrl+R）
+    const testProgressCommand = vscode.commands.registerCommand(
+        'auto-commit-assistant.testProgress',
+        async () => {
+            await executeTestProgress();
+        }
+    );
+
+    context.subscriptions.push(setupCommand, commitWithGenerateCommand, generateOnlyCommand, testProgressCommand);
 
     // 首次打开时自动配置
     checkAndAutoSetup(context);
@@ -135,6 +143,7 @@ async function setupKeybindings() {
         const config = vscode.workspace.getConfiguration('autoCommitAssistant');
         const keybinding = config.get<string>('keybinding', 'ctrl+g ctrl+g');
         const generateOnlyKeybinding = config.get<string>('generateOnlyKeybinding', 'ctrl+t ctrl+t');
+        const testProgressKeybinding = config.get<string>('testProgressKeybinding', 'ctrl+r ctrl+r');
         const enablePush = config.get<boolean>('enablePush', false);
 
         // 获取用户的 keybindings.json 路径
@@ -166,10 +175,11 @@ async function setupKeybindings() {
         // 移除可能存在的旧配置
         keybindings = keybindings.filter(
             (kb: any) => !(
-                (kb.key === keybinding || kb.key === generateOnlyKeybinding) && 
+                (kb.key === keybinding || kb.key === generateOnlyKeybinding || kb.key === testProgressKeybinding) && 
                 (kb.command === 'runCommands' || 
                  kb.command === 'auto-commit-assistant.commitWithGenerate' || 
-                 kb.command === 'auto-commit-assistant.generateOnly')
+                 kb.command === 'auto-commit-assistant.generateOnly' ||
+                 kb.command === 'auto-commit-assistant.testProgress')
             )
         );
 
@@ -185,8 +195,14 @@ async function setupKeybindings() {
             command: 'auto-commit-assistant.generateOnly'
         });
 
+        // 添加测试进度配置
+        keybindings.push({
+            key: testProgressKeybinding,
+            command: 'auto-commit-assistant.testProgress'
+        });
+
         // 写入文件（带注释）
-        const fileContent = generateKeybindingsContent(keybindings, keybinding, generateOnlyKeybinding, enablePush);
+        const fileContent = generateKeybindingsContent(keybindings, keybinding, generateOnlyKeybinding, testProgressKeybinding, enablePush);
         fs.writeFileSync(
             keybindingsPath,
             fileContent,
@@ -196,7 +212,8 @@ async function setupKeybindings() {
         vscode.window.showInformationMessage(
             `✅ 快捷键已配置成功！\n\n` +
             `${keybinding}：一键提交（保存 → 暂存 → 生成信息 → 提交${enablePush ? ' → 推送' : ''}）\n` +
-            `${generateOnlyKeybinding}：仅生成信息（保存 → 暂存 → 生成信息，可查看后再手动提交）`
+            `${generateOnlyKeybinding}：仅生成信息（保存 → 暂存 → 生成信息，可查看后再手动提交）\n` +
+            `${testProgressKeybinding}：测试模式（仅显示进度，不执行实际操作）`
         );
     } catch (error) {
         vscode.window.showErrorMessage(`❌ 配置快捷键失败：${error}`);
@@ -208,10 +225,11 @@ async function setupKeybindings() {
  * @param keybindings - 快捷键配置数组
  * @param commitKey - 完整提交快捷键
  * @param generateOnlyKey - 仅生成信息快捷键
+ * @param testProgressKey - 测试进度快捷键
  * @param enablePush - 是否启用推送
  * @returns 格式化的 JSON 字符串（带注释）
  */
-function generateKeybindingsContent(keybindings: any[], commitKey: string, generateOnlyKey: string, enablePush: boolean): string {
+function generateKeybindingsContent(keybindings: any[], commitKey: string, generateOnlyKey: string, testProgressKey: string, enablePush: boolean): string {
     const lines: string[] = ['['];
     
     for (let i = 0; i < keybindings.length; i++) {
@@ -255,6 +273,19 @@ function generateKeybindingsContent(keybindings: any[], commitKey: string, gener
             lines.push('    // ✅ 执行完成后会显示模态弹窗提示，并可打开源代码管理面板');
             lines.push('    // 💡 推荐：生成后可在源代码管理面板查看和修改提交信息');
             lines.push('    // 💡 确认无误后，点击"提交"按钮或按 Ctrl+Enter 完成提交');
+            lines.push('    // ================================================');
+        }
+        // 如果是测试进度配置，添加详细注释
+        else if (kb.key === testProgressKey && kb.command === 'auto-commit-assistant.testProgress') {
+            lines.push('    // ================================================');
+            lines.push('    // AI Auto Commit Assistant - 测试模式（仅用于调试）');
+            lines.push('    // ================================================');
+            lines.push('    // 快捷键：' + kb.key);
+            lines.push('    // 功能：测试进度显示和完成提示，不执行实际 git 操作');
+            lines.push('    //');
+            lines.push('    // ⚠️ 注意：这是测试模式，不会执行任何实际的 git 操作');
+            lines.push('    // 💡 用途：调试插件功能，测试进度条和完成提示是否正常显示');
+            lines.push('    // 🔧 开发调试专用，生产环境可以删除此配置');
             lines.push('    // ================================================');
         }
         
@@ -335,9 +366,9 @@ async function setupCursorRules(showPrompt: boolean = true): Promise<string | un
 
         // Git 提交规则模板
         const gitCommitRules = `# Git 提交信息规则
-When generating git commit messages, please follow these rules:
+When generating git commit messages, please follow these rules STRICTLY:
 
-使用中文生成提交信息，遵循以下模板：
+## 严格遵循以下格式模板：
 
 <类型>(<范围>): <主题>
 
@@ -345,37 +376,86 @@ When generating git commit messages, please follow these rules:
 
 <页脚>
 
-类型选项(use English)：
-- feat: 新功能
-- fix: 修复 bug
-- docs: 文档更新
-- style: 代码格式调整（不影响代码运行）
-- refactor: 代码重构
-- test: 添加测试
-- chore: 构建过程或辅助工具的变动
-- perf: 性能优化
-- ci: CI/CD 相关变更
-- revert: 回滚之前的提交
+## 类型选项（必须首字母大写）：
+- Feat: 新功能
+- Fix: 修复 bug
+- Docs: 文档更新
+- Style: 代码格式调整（不影响代码运行）
+- Refactor: 代码重构
+- Test: 添加测试
+- Chore: 构建过程或辅助工具的变动
+- Perf: 性能优化
+- Ci: CI/CD 相关变更
+- Revert: 回滚之前的提交
 
-要求：
-- 标题行必填（类型、范围、主题全部使用中文）
-- 正文和页脚可选
-- 每行不超过 72 个字符（中文字符按 2 个字符计算）
-- 各部分之间必须有空行分隔
-- 正文提供详细描述，可分多行
-- 多个变更使用项目符号列出
-- 范围应反映模块/组件名称（如：问卷、后台、前端等）
+## 格式要求（必须严格遵守）：
 
-示例：
+### 标题行（必填）：
+1. **类型**：使用英文，首字母必须大写（如 Feat、Fix、Docs）
+2. **范围**：使用中文，放在括号中（如：问卷、后台、前端、记录页面）
+3. **主题**：使用中文描述
+4. **格式示例**：\`Feat(记录页面): 调整记录表格样式\`
+
+### 正文（可选）：
+- 必须与标题之间空一行
+- 使用中文描述
+- 每个变更点必须以 \`- \` 开头（项目符号）
+- 每行不超过 72 个字符
+
+### 页脚（可选）：
+- 用于关联 issue 或 breaking changes
+
+## 完整示例：
+
+### 示例 1（推荐格式）：
+\`\`\`
 Feat(问卷): 添加卡片模式展示功能
 
-管理后台变更：
 - 在发布配置页面添加显示模式选择器
 - 支持正常模式和卡片模式切换
-
-H5 客户端变更：
 - 实现卡片翻页式问卷展示
 - 添加答题进度显示和导航按钮
+\`\`\`
+
+### 示例 2（记录页面样式调整）：
+\`\`\`
+Style(记录页面): 调整记录表格样式以提升视觉效果
+
+- 修改记录表格主体单元格背景为透明，增强整体美观性
+- 更新表格底部边框颜色，提升视觉层次感
+- 调整表格行悬停时的背景色，优化用户交互体验
+\`\`\`
+
+### 示例 3（Bug 修复）：
+\`\`\`
+Fix(登录模块): 修复用户登录失败的问题
+
+- 修复密码验证逻辑错误
+- 添加登录失败的错误提示
+\`\`\`
+
+## ⚠️ 常见错误（不要这样写）：
+
+❌ 错误示例 1（类型小写）：
+\`\`\`
+feat(记录页面): 调整记录表格样式
+\`\`\`
+
+❌ 错误示例 2（正文没有项目符号）：
+\`\`\`
+Style(记录页面): 调整记录表格样式
+
+修改记录表格主体单元格背景为透明
+更新表格底部边框颜色
+\`\`\`
+
+✅ 正确格式：
+\`\`\`
+Style(记录页面): 调整记录表格样式
+
+- 修改记录表格主体单元格背景为透明
+- 更新表格底部边框颜色
+\`\`\`
 `;
 
         // 检查文件是否存在
@@ -523,6 +603,68 @@ async function executeGenerateOnly() {
         }
     } catch (error) {
         vscode.window.showErrorMessage(`❌ 生成提交信息失败：${error}`);
+    }
+}
+
+/**
+ * 执行测试进度显示（Ctrl+R Ctrl+R）
+ * 仅用于调试，不执行实际的 git 操作
+ */
+async function executeTestProgress() {
+    try {
+        const config = vscode.workspace.getConfiguration('autoCommitAssistant');
+        const enablePush = config.get<boolean>('enablePush', false);
+
+        await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: "🧪 测试模式 - AI Auto Commit",
+            cancellable: false
+        }, async (progress) => {
+            // 1. 模拟保存所有文件
+            progress.report({ increment: 0, message: "保存文件... (模拟)" });
+            await delay(500);
+
+            // 2. 模拟暂存所有更改
+            progress.report({ increment: 25, message: "暂存更改... (模拟)" });
+            await delay(500);
+
+            // 3. 模拟生成提交信息
+            progress.report({ increment: 25, message: "AI 生成提交信息... (模拟)" });
+            await delay(1500);
+
+            // 4. 模拟提交
+            progress.report({ increment: 25, message: "提交更改... (模拟)" });
+            await delay(500);
+
+            // 5. 模拟推送（如果启用）
+            if (enablePush) {
+                progress.report({ increment: 25, message: "推送到远程... (模拟)" });
+                await delay(500);
+            }
+        });
+
+        // 显示完成提示
+        if (enablePush) {
+            await vscode.window.showInformationMessage(
+                '🧪 测试完成！（未执行实际操作）\n\n' +
+                '✅ 已模拟：保存 → 暂存 → 生成 → 提交 → 推送\n\n' +
+                '💡 这是测试模式，没有执行任何实际的 git 操作\n' +
+                '👉 使用 Ctrl+G Ctrl+G 执行真实的提交流程',
+                { modal: true },
+                '知道了'
+            );
+        } else {
+            await vscode.window.showInformationMessage(
+                '🧪 测试完成！（未执行实际操作）\n\n' +
+                '✅ 已模拟：保存 → 暂存 → 生成 → 提交\n\n' +
+                '💡 这是测试模式，没有执行任何实际的 git 操作\n' +
+                '👉 使用 Ctrl+G Ctrl+G 执行真实的提交流程',
+                { modal: true },
+                '知道了'
+            );
+        }
+    } catch (error) {
+        vscode.window.showErrorMessage(`❌ 测试失败：${error}`);
     }
 }
 

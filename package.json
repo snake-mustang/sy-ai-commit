@@ -2,7 +2,7 @@
   "name": "sy-ai-commit",
   "displayName": "sy-ai-commit",
   "description": "一键自动配置 Git Commit 快捷键和 Cursor 规则，提升提交效率，使用 AI 生成提交信息",
-  "version": "1.1.8",
+  "version": "1.1.9",
   "publisher": "sy-ai-commit",
   "engines": {
     "vscode": "^1.80.0"

@@ -2,7 +2,7 @@
   "name": "sy-ai-commit",
   "displayName": "sy-ai-commit",
   "description": "一键自动配置 Git Commit 快捷键和 Cursor 规则，提升提交效率，使用 AI 生成提交信息",
-  "version": "1.1.9",
+  "version": "1.2.0",
   "publisher": "sy-ai-commit",
   "engines": {
     "vscode": "^1.80.0"
@@ -68,6 +68,11 @@
           "type": "boolean",
           "default": false,
           "description": "是否在提交后自动推送"
+        },
+        "autoCommitAssistant.addGeneratedByTrailer": {
+          "type": "boolean",
+          "default": true,
+          "description": "是否在 AI 生成的提交信息末尾添加 'Generated-by: sy-ai-commit' 标记（用于统计使用量）"
         }
       }
     }

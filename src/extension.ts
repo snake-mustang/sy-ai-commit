@@ -3,11 +3,15 @@ import * as path from 'path';
 import * as os from 'os';
 import * as fs from 'fs';
 
+// 保存扩展上下文供全局使用
+let extensionContext: vscode.ExtensionContext;
+
 /**
  * 插件激活时调用
  * @param context - 扩展上下文
  */
 export function activate(context: vscode.ExtensionContext) {
+    extensionContext = context;
     console.log('AI Auto Commit Assistant 已激活');
 
     // 注册命令：完整初始化
@@ -46,6 +50,17 @@ export function activate(context: vscode.ExtensionContext) {
 
     // 首次打开时自动配置
     checkAndAutoSetup(context);
+
+    // 监听工作区切换，检查是否需要初始化
+    const workspaceFoldersChangeListener = vscode.workspace.onDidChangeWorkspaceFolders(async () => {
+        await checkProjectInitialization();
+    });
+    context.subscriptions.push(workspaceFoldersChangeListener);
+
+    // 延迟检查当前项目是否已初始化（避免与首次配置冲突）
+    setTimeout(() => {
+        checkProjectInitialization();
+    }, 2000);
 }
 
 /**
@@ -77,6 +92,60 @@ async function checkAndAutoSetup(context: vscode.ExtensionContext) {
         } else if (result === '不再提示') {
             await context.globalState.update('hasSetup', true);
             await config.update('autoSetupOnStartup', false, vscode.ConfigurationTarget.Global);
+        }
+    }
+}
+
+/**
+ * 检查项目是否已初始化 sy-ai-commit
+ * 切换项目时自动检查
+ */
+async function checkProjectInitialization() {
+    const workspaceFolders = vscode.workspace.workspaceFolders;
+    if (!workspaceFolders || workspaceFolders.length === 0) {
+        return;
+    }
+
+    const rootPath = workspaceFolders[0].uri.fsPath;
+    const cursorRulesPath = path.join(rootPath, '.cursorrules');
+
+    // 检查 .cursorrules 文件是否存在
+    if (!fs.existsSync(cursorRulesPath)) {
+        // 如果不存在，说明项目未初始化
+        const result = await vscode.window.showWarningMessage(
+            '⚠️ 当前项目未初始化 sy-ai-commit\n\n' +
+            '检测到您切换了项目，但当前项目未配置 sy-ai-commit。\n' +
+            '是否立即初始化？',
+            { modal: false },
+            '立即初始化',
+            '稍后',
+            '不再提示'
+        );
+
+        if (result === '立即初始化') {
+            await setupAll();
+        } else if (result === '不再提示') {
+            // 用户选择不再提示，可以记录到 workspace state
+            const config = vscode.workspace.getConfiguration('autoCommitAssistant');
+            await config.update('autoSetupOnStartup', false, vscode.ConfigurationTarget.Workspace);
+        }
+        return;
+    }
+
+    // 检查 .cursorrules 是否包含 Git 提交规则
+    const content = fs.readFileSync(cursorRulesPath, 'utf8');
+    if (!content.includes('When generating git commit messages')) {
+        // .cursorrules 存在但不包含 Git 提交规则
+        const result = await vscode.window.showWarningMessage(
+            '⚠️ 当前项目的 .cursorrules 未包含 Git 提交规则\n\n' +
+            '是否要添加 sy-ai-commit 的 Git 提交规则？',
+            { modal: false },
+            '添加规则',
+            '稍后'
+        );
+
+        if (result === '添加规则') {
+            await setupAll();
         }
     }
 }
@@ -526,9 +595,14 @@ async function executeCommitWithGenerate() {
             await delay(500);
 
             // 3. 生成提交信息
-            progress.report({ increment: 25, message: "AI 生成提交信息..." });
+            progress.report({ increment: 20, message: "AI 生成提交信息..." });
             await vscode.commands.executeCommand('cursor.generateGitCommitMessage');
             await delay(2000); // 等待 AI 生成完成
+
+            // 3.5 添加 Generated-by trailer
+            progress.report({ increment: 5, message: "添加标记..." });
+            await addGeneratedByTrailer();
+            await delay(200);
 
             // 4. 提交
             progress.report({ increment: 25, message: "提交更改..." });
@@ -586,16 +660,42 @@ async function executeGenerateOnly() {
             await delay(500);
 
             // 3. 生成提交信息
-            progress.report({ increment: 34, message: "AI 生成提交信息..." });
+            progress.report({ increment: 30, message: "AI 生成提交信息..." });
             await vscode.commands.executeCommand('cursor.generateGitCommitMessage');
             await delay(2000); // 等待 AI 生成完成
+
+            // 3.5 添加 Generated-by trailer
+            progress.report({ increment: 4, message: "添加标记..." });
+            await addGeneratedByTrailer();
+            await delay(200);
         });
+
+        // 获取生成的提交信息
+        const commitMessage = await getGeneratedCommitMessage();
+
+        // 构建显示消息
+        let displayMessage = '✅ 已生成提交信息！\n\n';
+        
+        if (commitMessage) {
+            // 限制显示长度，避免弹窗过大
+            const maxLength = 300;
+            const truncatedMessage = commitMessage.length > maxLength 
+                ? commitMessage.substring(0, maxLength) + '...\n\n(完整内容请在源代码管理面板查看)'
+                : commitMessage;
+            
+            displayMessage += '📝 生成的提交信息：\n' +
+                '━━━━━━━━━━━━━━━━━━━━\n' +
+                truncatedMessage + '\n' +
+                '━━━━━━━━━━━━━━━━━━━━\n\n';
+        } else {
+            displayMessage += '📝 提交信息已填入源代码管理面板\n\n';
+        }
+        
+        displayMessage += '👉 下一步：查看提交信息并点击"提交"按钮（或按 Ctrl+Enter）';
 
         // 显示完成提示
         const selection = await vscode.window.showInformationMessage(
-            '✅ 已生成提交信息！\n\n' +
-            '📝 提交信息已填入源代码管理面板\n' +
-            '👉 下一步：查看提交信息并点击"提交"按钮（或按 Ctrl+Enter）',
+            displayMessage,
             { modal: true },
             '打开源代码管理',
             '知道了'
@@ -606,6 +706,80 @@ async function executeGenerateOnly() {
         }
     } catch (error) {
         vscode.window.showErrorMessage(`❌ 生成提交信息失败：${error}`);
+    }
+}
+
+/**
+ * 获取生成的提交信息
+ * @returns 提交信息内容，如果获取失败则返回空字符串
+ */
+async function getGeneratedCommitMessage(): Promise<string> {
+    try {
+        // 获取 Git 扩展 API
+        const gitExtension = vscode.extensions.getExtension('vscode.git');
+        if (!gitExtension) {
+            return '';
+        }
+
+        const git = gitExtension.exports.getAPI(1);
+        if (!git || git.repositories.length === 0) {
+            return '';
+        }
+
+        const repo = git.repositories[0];
+        return repo.inputBox.value || '';
+    } catch (error) {
+        console.error('获取提交信息失败:', error);
+        return '';
+    }
+}
+
+/**
+ * 在生成的提交信息中添加 Generated-by trailer
+ * 用于统计扩展使用量
+ */
+async function addGeneratedByTrailer() {
+    try {
+        const config = vscode.workspace.getConfiguration('autoCommitAssistant');
+        const addTrailer = config.get<boolean>('addGeneratedByTrailer', true);
+        
+        if (!addTrailer) {
+            return;
+        }
+
+        // 获取 Git 扩展 API
+        const gitExtension = vscode.extensions.getExtension('vscode.git');
+        if (!gitExtension) {
+            console.warn('Git 扩展未找到');
+            return;
+        }
+
+        const git = gitExtension.exports.getAPI(1);
+        if (!git || git.repositories.length === 0) {
+            console.warn('未找到 Git 仓库');
+            return;
+        }
+
+        const repo = git.repositories[0];
+        const currentMessage = repo.inputBox.value;
+
+        // 如果已经包含标记，跳过
+        if (currentMessage.includes('Generated-by: sy-ai-commit')) {
+            return;
+        }
+
+        // 获取扩展版本
+        const extensionId = 'sy-ai-commit.sy-ai-commit';
+        const version = vscode.extensions.getExtension(extensionId)?.packageJSON.version || 'unknown';
+        
+        // 添加 trailer（符合 Git trailer 规范）
+        const trailer = `\n\nGenerated-by: sy-ai-commit@${version}`;
+        repo.inputBox.value = currentMessage + trailer;
+
+        console.log('已添加 Generated-by trailer');
+    } catch (error) {
+        console.error('添加 trailer 失败:', error);
+        // 不要阻塞提交流程
     }
 }
 
